@@ -1,9 +1,7 @@
 import org.apache.commons.cli.*;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.AnalyzerWrapper;
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
-import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexableField;
@@ -14,10 +12,13 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.highlight.*;
+import org.apache.lucene.search.similarities.BM25Similarity;
+import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.nio.file.Paths;
 import java.util.Scanner;
 
@@ -31,6 +32,8 @@ public class Search {
     private Analyzer enAnalyzer = null;
     private Analyzer cnAnalyzer = null;
     private Analyzer textAnalyzer = null;
+
+    private Similarity similarity = null;
 
     private Query query = null;
     private TopDocs topDocs = null;
@@ -52,15 +55,25 @@ public class Search {
         this.queryAnalyzer = queryAnalyzer;
     }
 
+    public void setSimilarity(Similarity similarity) {
+        this.similarity = similarity;
+    }
+
     public void search(String queryStr, int n)
             throws IOException, ParseException {
         if (this.queryAnalyzer == null) {
             this.queryAnalyzer = new SmartChineseAnalyzer();
         }
-
         MultiFieldQueryParser parser = new MultiFieldQueryParser(
                 Config.fieldNames, this.queryAnalyzer
         );
+
+        if (this.similarity == null) {
+            this.similarity = new BM25Similarity();
+        }
+        this.iSearcher.setSimilarity(this.similarity);
+        System.out.println("Using Similarity: " + this.iSearcher.getSimilarity(true).getClass().getName());
+
         this.query = parser.parse(queryStr);
         this.topDocs = this.iSearcher.search(query, n);
     }
@@ -82,6 +95,7 @@ public class Search {
         ScoreDoc[] scoreDocs = this.topDocs.scoreDocs;
         System.out.println("\n======== Results ========");
         for (ScoreDoc scoreDoc : scoreDocs) {
+            System.out.println("Score: " + scoreDoc.score);
             Document hitDoc = this.iSearcher.doc(scoreDoc.doc);
             for (IndexableField field : hitDoc.getFields()) {
                 String name = field.name();
@@ -138,6 +152,14 @@ public class Search {
         cnAnalyzerOption.setRequired(false);
         options.addOption(cnAnalyzerOption);
 
+        Option similarityOption = new Option("s", "similarity", true, "Similarity class to use");
+        similarityOption.setRequired(false);
+        options.addOption(similarityOption);
+
+        Option mixLMLambdaOption = new Option("l", "lambda", true, "lambda value for MixLMSimilarity");
+        mixLMLambdaOption.setRequired(false);
+        options.addOption(mixLMLambdaOption);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         CommandLine cmd = null;
@@ -177,6 +199,23 @@ public class Search {
                 Class clazz = Class.forName(cnAnalyzerName);
                 searcher.setCnAnalyzer((Analyzer) clazz.newInstance());
             }
+            if (cmd.hasOption("similarity")) {
+                String similarityName = cmd.getOptionValue("similarity");
+                Class clazz = Class.forName(similarityName);
+                if (MixLMSimilarity.class.isAssignableFrom(clazz)) {
+                    float lambda = 1.0f;
+                    if (cmd.hasOption("lambda")) {
+                        lambda = Float.parseFloat(cmd.getOptionValue("lambda"));
+                    }
+                    Class[] paramTypes = {float.class};
+                    Object[] params = {lambda};
+                    Constructor con = clazz.getConstructor(paramTypes);
+                    searcher.setSimilarity((Similarity) con.newInstance(params));
+                } else {
+                    searcher.setSimilarity((Similarity) clazz.newInstance());
+                }
+            }
+
             while (true) {
                 System.out.println("Input your query: ");
                 Scanner scanner = new Scanner(System.in);

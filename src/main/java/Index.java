@@ -8,12 +8,15 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.search.similarities.BM25Similarity;
+import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.nio.file.Paths;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,6 +30,8 @@ public class Index {
     private Analyzer cnAnalyzer = null;
     private PerFieldAnalyzerWrapper aWrapper = null;
 
+    private Similarity similarity = null;
+
     public Index(String dataPath) {
         this.dataPath = dataPath;
         this.pattern = Pattern.compile("^<(.*)>=(.*?);*$");
@@ -38,6 +43,10 @@ public class Index {
 
     public void setCnAnalyzer(Analyzer analyzer) {
         this.cnAnalyzer = analyzer;
+    }
+
+    public void setSimilarity(Similarity similarity) {
+        this.similarity = similarity;
     }
 
     private void setAnalyzerWrapper() {
@@ -54,8 +63,14 @@ public class Index {
 
     public void indexInto(Directory indexDir) throws IOException {
         setAnalyzerWrapper();
+        IndexWriterConfig iWriterConfig = new IndexWriterConfig(this.aWrapper);
+        if (this.similarity == null) {
+            this.similarity = new BM25Similarity();
+        }
+        iWriterConfig.setSimilarity(this.similarity);
+        System.out.println("Using Similarity: " + iWriterConfig.getSimilarity().getClass().getName());
         IndexWriter iWriter = new IndexWriter(
-                indexDir, new IndexWriterConfig(this.aWrapper)
+                indexDir, iWriterConfig
         );
         Document doc = null;
 
@@ -106,6 +121,14 @@ public class Index {
         cnAnalyzerOption.setRequired(false);
         options.addOption(cnAnalyzerOption);
 
+        Option similarityOption = new Option("s", "similarity", true, "Similarity class to use");
+        similarityOption.setRequired(false);
+        options.addOption(similarityOption);
+
+        Option mixLMLambdaOption = new Option("l", "lambda", true, "lambda value for MixLMSimilarity");
+        mixLMLambdaOption.setRequired(false);
+        options.addOption(mixLMLambdaOption);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         CommandLine cmd = null;
@@ -136,6 +159,22 @@ public class Index {
                 Class clazz = Class.forName(cnAnalyzerName);
                 indexer.setCnAnalyzer((Analyzer) clazz.newInstance());
             }
+            if (cmd.hasOption("similarity")) {
+                String similarityName = cmd.getOptionValue("similarity");
+                Class clazz = Class.forName(similarityName);
+                if (MixLMSimilarity.class.isAssignableFrom(clazz)) {
+                    float lambda = 1.0f;
+                    if (cmd.hasOption("lambda")) {
+                        lambda = Float.parseFloat(cmd.getOptionValue("lambda"));
+                    }
+                    Class[] paramTypes = {float.class};
+                    Object[] params = {lambda};
+                    Constructor con = clazz.getConstructor(paramTypes);
+                    indexer.setSimilarity((Similarity) con.newInstance(params));
+                } else {
+                    indexer.setSimilarity((Similarity) clazz.newInstance());
+                }
+            }
 
             System.out.println("Indexing data from "
                     + dataPath + " into "
@@ -144,7 +183,8 @@ public class Index {
             indexer.indexInto(indexDir);
             indexDir.close();
         } catch (ClassNotFoundException e) {
-            System.out.println("Wrong analyzer name. Please check.");
+            System.out.println("Wrong class name. Please check.");
+            e.printStackTrace();
             System.exit(1);
         } catch (Exception e) {
             e.printStackTrace();
