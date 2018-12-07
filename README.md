@@ -44,19 +44,24 @@ java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index \
 - `BM25Similarity`（程序默认）
 
 ```
-java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index -i ./data/CNKI_journal_v2.txt -o ./index_bm25
+java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index \
+-i ./data/CNKI_journal_v2.txt -o ./index_bm25
 ```
 
 - `ClassicSimilarity`
 
 ```
-java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index -i ./data/CNKI_journal_v2.txt -o ./index_classic --similarity org.apache.lucene.search.similarities.ClassicSimilarity
+java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index \
+-i ./data/CNKI_journal_v2.txt -o ./index_classic \
+--similarity org.apache.lucene.search.similarities.ClassicSimilarity
 ```
 
 - `MixLMSimilarity`（自定义的Similarity）
 
 ```
-java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index -i ./data/CNKI_journal_v2.txt -o ./index_mix_0.5 --similarity MixLMSimilarity --lambda 0.5
+java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Index \
+-i ./data/CNKI_journal_v2.txt -o ./index_mix_0.5 \
+--similarity MixLMSimilarity --lambda 0.5
 ```
 
 参数$\lambda$的含义后文解释。
@@ -91,19 +96,24 @@ java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search -i ./index_std_std \
 - `BM25Similarity`
 
 ```
-java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search -i ./index_bm25 -n 5
+java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search \
+-i ./index_bm25 -n 5
 ```
 
 - `ClassicSimilarity`
 
 ```
-java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search -i ./index_classic --similarity org.apache.lucene.search.similarities.ClassicSimilarity -n 5
+java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search \
+-i ./index_classic -n 5 \
+--similarity org.apache.lucene.search.similarities.ClassicSimilarity \
 ```
 
 - `MixLMSimilarity`
 
 ```
-java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search -i ./index_mix_0.5 --similarity MixLMSimilarity --lambda 0.5 -n 5
+java -jar ir-1.0-SNAPSHOT-jar-with-dependencies.jar Search \
+-i ./index_mix_0.5 -n 5 \
+--similarity MixLMSimilarity --lambda 0.5
 ```
 
 #### Usage
@@ -158,7 +168,7 @@ usage: Search
 
 在打印结果这一步骤，我还使用了lucene的高亮功能，以截取出搜索匹配的段落。原本的搜索过程只需要指定查询字符串的分词器，但高亮功能还需要提供原文的分词器，将存储的原文分词，以便与查询字符串的分词相对比，找到应当高亮的地方。复用了建立索引时的`PerFieldAnalyzerWrapper`，故命令行可以分别提供中英分词器。
 
-**注意，搜索时指定的查询分词器、原文分词器，应当与建立对应索引时使用的分词器相匹配。**假如建立索引时使用了`StandardAnalyzer`，会把中文按字切分；然而搜索时使用了`SmartChineseAnalyzer`，会把查询字符串按词切分。这样，切分后的查询词只要长一个字以上，就不可能在倒排索引中找到匹配。
+__注意，搜索时指定的查询分词器、原文分词器，应当与建立对应索引时使用的分词器相匹配。__ 假如建立索引时使用了`StandardAnalyzer`，会把中文按字切分；然而搜索时使用了`SmartChineseAnalyzer`，会把查询字符串按词切分。这样，切分后的查询词只要长一个字以上，就不可能在倒排索引中找到匹配。
 
 #### Part 2 任务
 
@@ -193,9 +203,14 @@ Similarity---+--->TFIDFSimilarity------->ClassicSimilarity
 ##### 自定义的MixLMSimilarity
 
 实现的是课程PPT上的一个简单的语言模型：
+
+
 $$
-p ( Q | d ) = \prod _ { t \in Q } ( ( 1 - \lambda ) p ( t ) + \lambda p ( t | M _ { d } ) )
+p ( Q | d ) = \prod _ { t \in Q } ( ( 1 - \lambda ) p ( t ) + \lambda p ( t | M _ { d } ))
 $$
+
+
+
 $p(t)$是词$t$在整个语料库中的概率，实现为$t$在所有文档的词频之和除以语料库词总量。$p(t|M_d)$是词$t$在文档$d$中的概率，实现为$t$在$d$中的频率除以$d$的长度。这两部分都可以用`score(BasicStats stats, float freq, float docLen)`的参数计算得到，`stats`包含了语料库级别的统计数据，`freq`和`docLen`直接就是文档内的词频和文档长度。
 
 $\lambda$是上述两个概率的加权平均参数。其实由公式可以看出，对于同一个query，$\lambda$的值对结果的相对顺序并没有影响。将语料库级别的概率加权平均进来，主要还是在不同query之间做比较时有意义，不是这次作业的范围。
@@ -206,7 +221,7 @@ $\lambda$是上述两个概率的加权平均参数。其实由公式可以看�
 
 #### Part 1 任务
 
-分别在`index_std_std`和`index_ena_smart`上查询**“共产国际”**，结果如下：
+分别在`index_std_std`和`index_ena_smart`上查询 __“共产国际”__ ，结果如下：
 
 -  `index_std_std`上的结果：
 
